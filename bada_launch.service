@@ -1,0 +1,137 @@
+# BADA Launch Service
+# 부팅 시 자동으로 MAVProxy와 ROS2 launch를 실행하는 systemd 서비스
+#
+# 설치 방법:
+# 1. 이 파일을 /etc/systemd/system/bada-launch.service 로 복사
+#    sudo cp bada_launch.service /etc/systemd/system/bada-launch.service
+#
+# 2. 실행 권한 부여
+#    sudo chmod 644 /etc/systemd/system/bada-launch.service
+#
+# 3. systemd 데몬 다시 로드
+#    sudo systemctl daemon-reload
+#
+# 4. 서비스 활성화 (부팅 시 자동 시작)
+#    sudo systemctl enable bada-launch.service
+#
+# 5. 서비스 시작
+#    sudo systemctl start bada-launch.service
+#
+# 서비스 상태 확인:
+#    sudo systemctl status bada-launch.service
+#
+# 서비스 로그 확인:
+#    sudo journalctl -u bada-launch.service -f
+#
+# MAVProxy 로그 확인:
+#    tail -f /home/bada/logs/mavproxy.log
+#
+# 문제 해결 (Troubleshooting):
+# 1. 시리얼 포트 권한 확인:
+#    ls -la /dev/ttyUSB*
+#    sudo usermod -a -G dialout,tty bada
+#
+# 2. MAVProxy 설치 확인:
+#    which mavproxy.py
+#    /home/bada/.local/bin/mavproxy.py --help
+#
+# 3. 서비스 디버깅:
+#    sudo journalctl -u bada-launch.service -f --no-pager
+#    sudo systemctl status bada-launch.service -l
+#
+# 4. 수동 테스트 (터미널에서):
+#    sudo -u bada /home/bada/.local/bin/mavproxy.py --master=/dev/ttyUSB0 --baudrate=115200 --out=udp:127.0.0.1:15678 --out=udp:192.168.101.10:14550
+#
+# 서비스 중지:
+#    sudo systemctl stop bada-launch.service
+#
+# 서비스 비활성화:
+#    sudo systemctl disable bada-launch.service
+
+[Unit]
+Description=BADA Launch Service - MAVProxy and ROS2 Launcher
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/home
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=bada
+Group=bada
+SupplementaryGroups=dialout tty
+WorkingDirectory=/home/bada/bada2_ws
+
+# 환경 변수 설정
+Environment="LOCALHOST=127.0.0.1"
+Environment="PORT=15678"
+Environment="QGC_IP=192.168.101.21"
+Environment="QGC_PORT=14550"
+
+# ROS2 환경 설정
+Environment="ROS_DOMAIN_ID=0"
+#Environment="RMW_IMPLEMENTATION=rmw_fastrtps_cpp"
+
+ExecStart=/bin/bash -c '\
+    set -e; \
+    echo "Starting BADA Launch Service..."; \
+    \
+    # ROS2 환경 소싱 \
+    source /opt/ros/humble/setup.bash; \
+    source /home/bada/bada2_ws/install/setup.bash; \
+    \
+    # MAVProxy 실행 (백그라운드) \
+    echo "Starting MAVProxy..."; \
+    mkdir -p /home/bada/logs; \
+    \
+    # PATH에 사용자 로컬 bin 추가 \
+    export PATH="/home/bada/.local/bin:$PATH"; \
+    \
+    # 시리얼 포트 권한 확인 \
+    ls -la /dev/ttyUSB* || echo "ttyUSB* not found"; \
+    \
+    # MAVProxy 실행 (전체 경로 사용) \
+    /home/bada/.local/bin/mavproxy.py \
+        --master=/dev/ttyUSB0 \
+        --baudrate=115200 \
+        --out=udp:$LOCALHOST:$PORT \
+        --out=udp:$QGC_IP:$QGC_PORT \
+        --daemon \
+        --logfile=/home/bada/logs/mavproxy.log & \
+    \
+    # 2초 대기 \
+    sleep 2; \
+    \
+    # ROS2 launch 실행 (백그라운드) \
+    echo "Starting ROS2 launch..."; \
+    ros2 launch bada_bringup bada.launch.py & \
+    \
+    # 프로세스들이 시작될 시간 확보 \
+    sleep 2; \
+    \
+    echo "BADA Launch Service started successfully"; \
+'
+
+ExecStop=/bin/bash -c '\
+    echo "Stopping BADA Launch Service..."; \
+    \
+    # ROS2 프로세스 종료 \
+    pkill -f "ros2 launch bada_bringup" || true; \
+    \
+    # MAVProxy 프로세스 종료 \
+    pkill -f "mavproxy.py" || true; \
+    \
+    sleep 2; \
+    echo "BADA Launch Service stopped"; \
+'
+
+# 서비스 실패 시 재시작 설정
+Restart=on-failure
+RestartSec=10
+
+# 로그 출력 설정
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
