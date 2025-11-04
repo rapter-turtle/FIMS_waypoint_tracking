@@ -30,10 +30,16 @@ from gen_ref import *
 # y_actual_max = 4025953.16
 
 #Jeongok
-x_actual_min = 289577.66
-x_actual_max = 291591.05
-y_actual_min = 4117065.30
-y_actual_max = 4118523.52
+# x_actual_min = 289577.66
+# x_actual_max = 291591.05
+# y_actual_min = 4117065.30
+# y_actual_max = 4118523.52
+
+#Pyongtaek  
+x_actual_min = 302345.14
+x_actual_max = 307282.28
+y_actual_min = 4094260.10
+y_actual_max = 4096878.75
 
 x_end = int(x_actual_max - x_actual_min)
 y_end = int(y_actual_max - y_actual_min)
@@ -108,7 +114,8 @@ class SensorFusionEKF(Node):
         self.line1, = self.ax1.plot([], [], 'k-', label='ekf')
         self.line1test, = self.ax1.plot([], [], 'm.', label='plot every 1-sec')
         # kaist_img = plt.imread("/home/user/aura_ws/src/wpt/kaist.png")
-        kaist_img = plt.imread("/home/kiyong/bada2_ws/bada2_ws/helper/jeongok.png")
+        # kaist_img = plt.imread("/home/kiyong/bada2_ws/bada2_ws/helper/jeongok.png")
+        kaist_img = plt.imread("/home/kiyong/bada2_ws/bada2_ws/helper/pyeongtaek.png")
         map_height, map_width = kaist_img.shape[:2]
         self.map_height = map_height
         self.map_width = map_width
@@ -126,8 +133,8 @@ class SensorFusionEKF(Node):
         self.ref_dt = 0.01
          # reference dt = 0.01 sec, 1000 sec trajectory generation
         # self.reference = generate_figure_eight_trajectory_con(1000, self.ref_dt) # reference dt = 0.01 sec, 1000 sec trajectory generation
-        ship_state_x = (289577.66 + 291591.05)*0.5  # UTM X (easting)
-        ship_state_y = (4117065.30 + 4118523.52)*0.5  
+        ship_state_x = (x_actual_max + x_actual_min)*0.5  # UTM X (easting)
+        ship_state_y = (y_actual_max + y_actual_min)*0.5  
 
         traj_xy = (ship_state_x, ship_state_y)
         self.traj_offset = np.array([0, 0])

@@ -17,14 +17,31 @@ class ShipSimulator(Node):
 
         # 초기 상태 [x, y, ψ, u, v, r, δ, F_eff]
         self.ship_state = np.zeros(6)
+
+        ### Jeongok ###
         # self.ship_state[0] = (289577.66 + 291591.05) * 0.5 - 600  # X
         # self.ship_state[1] = (4117065.30 + 4118523.52) * 0.5 # Y
 
         # self.ship_state[0] = (289577.66 + 291591.05) * 0.5 - 600  # X
         # self.ship_state[1] = (4117065.30 + 4118523.52) * 0.5  + 300# Y
         
-        self.ship_state[0] = (289577.66 + 291591.05) * 0.5 - 300  # X
-        self.ship_state[1] = (4117065.30 + 4118523.52) * 0.5  + 300# Y
+        # self.ship_state[0] = (289577.66 + 291591.05) * 0.5 - 300  # X
+        # self.ship_state[1] = (4117065.30 + 4118523.52) * 0.5  + 300# Y
+
+        # self.ship_state[0] = (289577.66 + 291591.05) * 0.5 - 300  # X
+        # self.ship_state[1] = (4117065.30 + 4118523.52) * 0.5# Y
+
+
+        ### Pyongtaek ###
+
+        x_actual_min = 302345.14
+        x_actual_max = 307282.28
+        y_actual_min = 4094260.10
+        y_actual_max = 4096878.75
+
+        self.ship_state[0] = (x_actual_min + x_actual_max) * 0.5 - 2000.0 # X
+        self.ship_state[1] = (y_actual_min + y_actual_max) * 0.5# Y
+
         self.ship_state[2] = 150 * np.pi / 180.0  # ψ
 
         # 시뮬레이션 step
