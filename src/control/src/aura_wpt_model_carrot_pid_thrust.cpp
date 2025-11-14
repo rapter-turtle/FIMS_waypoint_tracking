@@ -302,13 +302,62 @@ private:
     void init(){
         // add initialization code here
     }
+    // 각도를 -π ~ π 범위로 정규화
+    float normalize_angle(float angle) {
+        while (angle > M_PI) angle -= 2.0f * M_PI;
+        while (angle < -M_PI) angle += 2.0f * M_PI;
+        return angle;
+    }
+
+    // 도(degree)를 라디안(radian)으로 변환
+    float deg_to_rad(float deg) {
+        return deg * M_PI / 180.0f;
+    }
+
+    // 라디안을 도로 변환
+    float rad_to_deg(float rad) {
+        return rad * 180.0f / M_PI;
+    }
+
+    float calculate_los(float drone_yaw, 
+                    float current_utm_e, float current_utm_n,
+                    float target_utm_e, float target_utm_n) {
+    // 목표 방향 계산
+    float dx = target_utm_e - current_utm_e;
+    float dy = target_utm_n - current_utm_n;
     
+    // 거리 계산
+    float distance = std::sqrt(dx * dx + dy * dy);
+    
+    // 목표 방위각 (북쪽 기준 시계방향)
+    float target_bearing = std::atan2(dx, dy);
+    
+    // LOS 계산
+    float los = target_bearing - drone_yaw;
+    
+    // 정규화
+    los = normalize_angle(los);
+    
+    // std::cout << "  거리: " << std::fixed << std::setprecision(2) 
+    //           << distance << " m" << std::endl;
+    // std::cout << "  목표 방위각: " << rad_to_deg(target_bearing) 
+    //           << "°" << std::endl;
+    
+    return los;
+    }
+
     void state_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
     {
         // Extract yaw (psi) from quaternion
         x = msg->data[0];
         y = msg->data[1];
-        psi = -msg->data[2]+0.5*3.141592;
+        // psi = -msg->data[2]+0.5*3.141592;
+        double yaw_ned = msg->data[2];
+
+        // psi =  - yaw_ned + M_PI/2.0;
+        psi = yaw_ned;
+        if (psi > M_PI) psi -= 2*M_PI;
+        if (psi < -M_PI) psi += 2*M_PI;
         u = msg->data[3];
         v = msg->data[4];
         r = msg->data[5];
@@ -387,6 +436,7 @@ private:
                 );
                 waypoints.emplace_back(utm_easting, utm_northing);
                 RCLCPP_ERROR(this->get_logger(), "Waypoints Received!!! speed_ms: %.2f", msg->speed_ms);
+                // RCLCPP_ERROR(this->get_logger(), "x_lat : %.10f, y_long : %.10f", msg->x_lat[i], msg->y_long[i]);
 
             }
             if (msg->speed_ms > 0.0) {
@@ -490,43 +540,43 @@ private:
 
     void update_gains_based_on_velocity(double desired_velocity)
     {
-        // Tunning mode
-        // int index = static_cast<int>(desired_velocity);  // Integer part of the velocity value
-        // // Ensure the index is within bounds (0 to 20)
-        // index = std::min(index, static_cast<int>(Kp_schedule.size()) - 1);
-        // // Set the gains based on the velocity
-        // Kp = Kp_schedule[index];
-        // Kd = Kd_schedule[index];
-        // max_steer = max_steer_schedule[index];
-        // max_steer_diff = max_steer_diff_schedule[index];
-        // max_thrust = 45.0;
-        // max_thrust_diff = 0.05;
-
-
-        // Fixed mode
-        ////////////////// HERE ////////////////// 
-        auto linear_interp = [](const std::vector<double>& vec, double vel) {
-            int n = vec.size();
-            // if (vel <= 1.0) return vec.front();
-    
-            int lower = static_cast<int>(std::floor(vel)) - 1;  // 2.5 -> 1
-            int upper = static_cast<int>(lower + 1);
+        if(tuning_mode == true){
+            // Tunning mode
+            int index = static_cast<int>(desired_velocity);  // Integer part of the velocity value
+            // Ensure the index is within bounds (0 to 20)
+            index = std::min(index, static_cast<int>(Kp_schedule.size()) - 1);
+            // Set the gains based on the velocity
+            Kp = Kp_schedule[index];
+            Kd = Kd_schedule[index];
+            max_steer = max_steer_schedule[index];
+            max_steer_diff = max_steer_diff_schedule[index];
+        }
+        else {
+            // Fixed mode
+            ////////////////// HERE ////////////////// 
+            auto linear_interp = [](const std::vector<double>& vec, double vel) {
+                int n = vec.size();
+                // if (vel <= 1.0) return vec.front();
         
-            // Fraction between two indices
-            double ratio = vel - std::floor(vel);
+                int lower = static_cast<int>(std::floor(vel)) - 1;  // 2.5 -> 1
+                int upper = static_cast<int>(lower + 1);
+            
+                // Fraction between two indices
+                double ratio = vel - std::floor(vel);
+            
+                return vec[lower] + (vec[upper] - vec[lower]) * ratio;
+            };
         
-            return vec[lower] + (vec[upper] - vec[lower]) * ratio;
-        };
-    
-        // --- Apply interpolation for each scheduled parameter ---
-        Kp = linear_interp(Kp_schedule, desired_velocity);
-        Kd = linear_interp(Kd_schedule, desired_velocity);
-        max_steer = linear_interp(max_steer_schedule, desired_velocity);
-        max_steer_diff = linear_interp(max_steer_diff_schedule, desired_velocity);
-
-        max_thrust = 45.0;
-        max_thrust_diff = 0.05;
-
+            // --- Apply interpolation for each scheduled parameter ---
+            Kp = linear_interp(Kp_schedule, desired_velocity);
+            Kd = linear_interp(Kd_schedule, desired_velocity);
+            max_steer = linear_interp(max_steer_schedule, desired_velocity);
+            max_steer_diff = linear_interp(max_steer_diff_schedule, desired_velocity);
+            // max_steer_diff = 10;
+        }
+        // max_steer_diff = 10;
+        max_thrust = 90.0; //% 기준
+        max_thrust_diff = 0.4; // % 기준
     }
 
     void timer_callback()
@@ -615,17 +665,23 @@ private:
             double dx = x - waypoints[0].first;
             double dy = y - waypoints[0].second;
             double len = std::hypot(dx, dy);
-            if (len > 1e-6) {
-                double ux = dx / len;
-                double uy = dy / len;
-                s_easting  = waypoints[0].first + ux * backward_distance;
-                s_northing = waypoints[0].second + uy * backward_distance;
-                RCLCPP_INFO(this->get_logger(),
-                "########################################");
-            } else {
-                s_easting  = current_utm.easting - backward_distance;
-                s_northing = current_utm.northing;
-            }
+            double ux = dx / len;
+            double uy = dy / len;
+            s_easting  = waypoints[0].first + ux * backward_distance;
+            s_northing = waypoints[0].second + uy * backward_distance;
+            RCLCPP_INFO(this->get_logger(),
+            "########################################");
+            // if (len > 1e-6) {
+            //     double ux = dx / len;
+            //     double uy = dy / len;
+            //     s_easting  = waypoints[0].first + ux * backward_distance;
+            //     s_northing = waypoints[0].second + uy * backward_distance;
+            //     RCLCPP_INFO(this->get_logger(),
+            //     "########################################");
+            // } else {
+            //     s_easting  = current_utm.easting - backward_distance;
+            //     s_northing = current_utm.northing;
+            // }
             
             
             // Add backward waypoint, then mission waypoints
@@ -641,6 +697,8 @@ private:
             for (size_t i = 0; i < waypoints.size(); i++)
             {
                 carrot_waypoints.emplace_back(waypoints[i].first, waypoints[i].second);
+
+                RCLCPP_ERROR(this->get_logger(), "x_lat : %.10f, y_long : %.10f", waypoints[i].first, waypoints[i].second);
             }
 
             mission_started = true;
@@ -696,6 +754,7 @@ private:
             // RCLCPP_INFO(this->get_logger(), "WPT1 = [%2.f, %2.f], WPT2 = [%2.f, %2.f]", x1, y1, x2, y2);
 
             wpt_angle = std::atan2(y2-y1, x2-x1);
+            // wpt_angle = std::atan2(x2-x1,y2-y1);
             f = (y2-y1)/(x2-x1);
 
             xo = (f*f*x1 - f*y1 + x + f*y)/(f*f + 1);
@@ -715,8 +774,16 @@ private:
             else if (psi < -M_PI)
                 psi += 2 * M_PI;
 
+            double ll = std::atan2(dy, dx);
+            if (ll > M_PI)
+                ll -= 2 * M_PI;
+            else if (ll < -M_PI)
+                ll += 2 * M_PI;
+
+            
             // Line of Sight (LOS) angle
-            double LOS = std::atan2(dy, dx) - psi;
+            double LOS = calculate_los(psi, x, y, x2, y2);
+            // double LOS = std::atan2(dx, dy) - psi;
             if (LOS > M_PI)
                 LOS -= 2 * M_PI;
             else if (LOS < -M_PI)
@@ -735,7 +802,8 @@ private:
             update_gains_based_on_velocity(desired_velocity);
 
             double error_angle = LOS;
-            double steer_input = -Kp * error_angle - Kd * (error_angle - before_error_angle)*0.1/dt;
+            double steer_input = Kp * error_angle + Kd * (error_angle - before_error_angle)*0.1/dt;
+            // double steer_input = Kp * error_angle + Kd * (error_angle - before_error_angle)*0.1/dt;
             steer_input = clamp(steer_input, -max_steer, max_steer);
             before_error_angle = error_angle;
 
@@ -751,12 +819,20 @@ private:
                 RCLCPP_INFO(this->get_logger(), "##### proposed thrust ######");
             }
             else{
-                proposed_thrust = (4.9*desired_velocity + 0.66*desired_velocity*desired_velocity);// - Kup*velocity_es);
+                // proposed_thrust = (21.406752*desired_velocity + (-0.919137)*desired_velocity*desired_velocity);// - Kup*velocity_es);
+                if (desired_velocity < 6.0){
+                    proposed_thrust = (11.51*desired_velocity - 0.804*desired_velocity*desired_velocity);// - Kup*velocity_es);
+                }
+                else{
+                    proposed_thrust = 25 + (2.636*desired_velocity - 0.0111*desired_velocity*desired_velocity);// - Kup*velocity_es);
+                }
+                
+                
                 before_proposed_thrust = proposed_thrust;
             }
 
             before_velocity_e = velocity_e;
- 
+            // max_steer_diff = 0.3;
             // Apply rate limiting
             double steer_change = steer_input - last_steering;
             steer_change = clamp(steer_change, -max_steer_diff, max_steer_diff);
@@ -792,8 +868,9 @@ private:
             RCLCPP_INFO(this->get_logger(), "LOS=%.2f", LOS * 180 / M_PI);
             RCLCPP_INFO(this->get_logger(), "desired u =%.2f knots, u=%.2f m/s, %.2f knots", desired_velocity* 1.94384,u , u * 1.94384);
             RCLCPP_INFO(this->get_logger(), "Kp=%.2f, Kd=%.2f, max_steer=%.2f, max_steer_diff=%.2f",Kp, Kd, max_steer, max_steer_diff);
+            RCLCPP_INFO(this->get_logger(), "Added backward waypoint: (%.3f, %.3f)", carrot_waypoints[0].first, carrot_waypoints[0].second);
 
-            publisher_->publish(actuator_msg);
+            publisher_->publish(actuator_msg); //////////////////////////////////////
 
 
             n = n + 1;
@@ -836,31 +913,42 @@ private:
     // Timer
     rclcpp::TimerBase::SharedPtr timer_;
 
-    std::vector<double> Kp_schedule = {
+    // std::vector<double> Kp_schedule = { // index는 m/s 속도 기준으로 p gain 값 
+    //     300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 
+    //     300.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 
+    //     100.0
+    // };
+
+    std::vector<double> Kp_schedule = { // index는 m/s 속도 기준으로 p gain 값 
         300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 
-        300.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 
+        300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 250.0, 100.0, 100.0, 100.0, 
         100.0
     };
 
+    // std::vector<double> Kd_schedule = {
+    //     2000.0, 2000.0, 2000.0, 2000.0, 2000.0, 2000.0, 2000.0, 2000.0, 2000.0, 200.0, 
+    //     200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 
+    //     200.0
+    // };
+
     std::vector<double> Kd_schedule = {
-        2000.0, 2000.0, 2000.0, 2000.0, 2000.0, 2000.0, 2000.0, 2000.0, 2000.0, 200.0, 
-        200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 
-        200.0
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 
+        0.0
     };
 
-
     std::vector<double> max_steer_schedule = {
-        250.0, 250.0, 250.0, 250.0, 250.0, 250.0, 250.0, 250.0, 250.0, 250.0, 
-        250.0, 250.0, 250.0, 250.0, 250.0, 250.0, 250.0, 250.0, 250.0, 250.0, 
-        250.0
+        150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 
+        150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 
+        150.0
     };
 
 
 
     std::vector<double> max_steer_diff_schedule = {
-        10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 
-        10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 
-        10.0
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 
+        20.0
     };
 
 
@@ -889,6 +977,7 @@ private:
     float waypoints_scaled_speed_ms; 
     // Position message storage
     bada_msg::msg::GlobalPosition last_position_message;
+    bool tuning_mode = false;
 };
 
 int main(int argc, char **argv)
@@ -903,3 +992,4 @@ int main(int argc, char **argv)
     rclcpp::shutdown();
     return 0;
 }
+
