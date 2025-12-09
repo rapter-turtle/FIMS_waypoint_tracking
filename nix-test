@@ -1,0 +1,15 @@
+sudo systemctl stop bada-launch.service
+sudo systemctl status bada-launch.service
+sudo systemctl start bada-launch.service
+
+
+nano ~/.ssh/config
+gedit ~/.ssh/config
+
+
+Host rib-server
+    HostName 192.168.103.11
+    User bada
+    PubkeyAuthentication no
+    PasswordAuthentication yes
+    
